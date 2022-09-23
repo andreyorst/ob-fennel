@@ -5,7 +5,7 @@
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: outlines, literate programming, reproducible research
 ;; Prefix: ob-fennel
-;; Version: 0.0.1
+;; Version: 0.0.2
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -43,7 +43,6 @@
 (add-to-list 'org-babel-tangle-lang-exts '("fennel" . "fnl"))
 
 (defvar org-babel-default-header-args:fennel'())
-(defvar org-babel-header-args:fennel '())
 
 ;; TODO?
 ;; (defun org-babel-expand-body:fennel (body params)
@@ -69,31 +68,34 @@
   "Get or create Fennel REPL buffer according to PARAMS.
 
 Can return symbol `uninitialized' in case there was no REPL buffer."
-  (let ((session (cdr (assq :session params))))
-    (cond ((and (string= "none" session)
+  (let ((session-name (cdr (assq :session params)))
+        (fmt "*Fennel REPL:%s*")
+        (uninitiolized-err "Please reevaluate when Fennel REPL is connected"))
+    (cond ((and (string= "none" session-name)
                 (ob-fennel--check-fennel-proc fennel-repl--buffer))
            (get-buffer fennel-repl--buffer))
-          ((string= "none" session)
+          ((string= "none" session-name)
            (ob-fennel--initialize-repl fennel-repl--buffer params)
-           'uninitialized)
-          ((ob-fennel--check-fennel-proc session)
-           (get-buffer session))
-          (t (ob-fennel--initialize-repl session params)
-             'uninitialized))))
+           (user-error uninitiolized-err))
+          ((ob-fennel--check-fennel-proc (format fmt session-name))
+           (get-buffer (format fmt session-name)))
+          (t (ob-fennel--initialize-repl (format fmt session-name) params)
+             (user-error uninitiolized-err)))))
 
-(defun ob-fennel--send-to-repl (body)
+(defun ob-fennel--send-to-repl (repl-buffer body)
   "Send BODY to the `inferior-lisp-proc' and retrieve the result."
-  (condition-case nil (inferior-lisp-proc)
-    (error
-     (user-error "%S buffer doesn't have an active process"
-                 inferior-lisp-buffer)))
-  (string-trim
-   (replace-regexp-in-string
-    "^[[:space:]]+" ""
-    (replace-regexp-in-string
-     fennel-mode-repl-prompt-regexp ""
-     (fennel-scratch--eval-to-string
-      body)))))
+  (let ((inferior-lisp-buffer repl-buffer))
+    (condition-case nil (inferior-lisp-proc)
+      (error
+       (user-error "%S buffer doesn't have an active process"
+                   inferior-lisp-buffer)))
+    (string-trim
+     (replace-regexp-in-string
+      "^[[:space:]]+" ""
+      (replace-regexp-in-string
+       fennel-mode-repl-prompt-regexp ""
+       (fennel-scratch--eval-to-string
+        body))))))
 
 (defun org-babel-execute:fennel (body params)
   "Evaluate a block of Fennel code with Babel.
@@ -117,10 +119,8 @@ co-exist in different sessions, since they're different
 processes."
   (condition-case nil (require 'fennel-scratch)
     (error (user-error "`fennel-scratch' is unavailable")))
-  (let* ((inferior-lisp-buffer (ob-fennel--get-create-repl-buffer params))
-         (eval-result (if (eq 'uninitialized inferior-lisp-buffer)
-                          "Please reevaluate when Fennel REPL is connected"
-                        (ob-fennel--send-to-repl body))))
+  (let* ((repl-buffer (ob-fennel--get-create-repl-buffer params))
+         (eval-result (ob-fennel--send-to-repl repl-buffer body)))
     (org-babel-result-cond (cdr (assq :result-params params))
       eval-result
       (condition-case nil (org-babel-script-escape eval-result)
