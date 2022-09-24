@@ -5,7 +5,7 @@
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: outlines, literate programming, reproducible research
 ;; Prefix: ob-fennel
-;; Version: 0.0.2
+;; Version: 0.0.3
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -30,11 +30,12 @@
 ;; - fennel-mode, particularly fennel-scratch module
 
 ;;; Code:
+
 (require 'ob)
 (require 'inf-lisp)
+(require 'ansi-color)
 
 (defvar fennel-mode-repl-prompt-regexp)
-(defvar fennel-repl--buffer)
 (defvar fennel-program)
 (declare-function fennel-scratch--eval-to-string "ext:fennel-scratch" (sexp))
 (declare-function fennel-repl--start "ext:fennel-mode" (&optional ask-for-command?))
@@ -42,12 +43,13 @@
 (defvar org-babel-tangle-lang-exts)
 (add-to-list 'org-babel-tangle-lang-exts '("fennel" . "fnl"))
 
-(defvar org-babel-default-header-args:fennel'())
+(defvar org-babel-default-header-args:fennel '())
 
-;; TODO?
-;; (defun org-babel-expand-body:fennel (body params)
-;;   "Expand BODY according to PARAMS, return the expanded body."
-;;   )
+(defvar-local ob-fennel--current-session-buffer nil
+  "Parent buffer of a session.")
+
+(defvar ob-fennel--hline-to "(setmetatable [] {:__fennelview #:hline})"
+  "Replace hlines in incoming tables with this when translating to Fennel.")
 
 (defun ob-fennel--check-fennel-proc (buffer)
   "Check if BUFFER has a running `inferior-lisp-proc'."
@@ -64,31 +66,34 @@
       (rename-buffer name))
     buffer))
 
-(defun ob-fennel--get-create-repl-buffer (params)
-  "Get or create Fennel REPL buffer according to PARAMS.
+(defun ob-fennel--get-create-repl-buffer (session params)
+  "Get or create Fennel REPL buffer for SESSION according to PARAMS.
 
-Can return symbol `uninitialized' in case there was no REPL buffer."
-  (let ((session-name (cdr (assq :session params)))
-        (fmt "*Fennel REPL:%s*")
-        (uninitiolized-err "Please reevaluate when Fennel REPL is connected"))
-    (cond ((and (string= "none" session-name)
-                (ob-fennel--check-fennel-proc fennel-repl--buffer))
-           (get-buffer fennel-repl--buffer))
-          ((string= "none" session-name)
-           (ob-fennel--initialize-repl fennel-repl--buffer params)
+Raises a `user-error' in case there was no REPL buffer."
+  (when (null ob-fennel--current-session-buffer)
+    (setq ob-fennel--current-session-buffer (current-buffer)))
+  (let ((fmt (format "*Fennel REPL:%%s[%s]*" ob-fennel--current-session-buffer))
+        (uninitiolized-err "Please re-evaluate when Fennel REPL is initialized"))
+    (cond ((and (or (string= "none" session)
+                    (null session))
+                ob-fennel--current-session-buffer
+                (ob-fennel--check-fennel-proc (format fmt "default")))
+           (get-buffer (format fmt "default")))
+          ((or (string= "none" session)
+               (null session))
+           (ob-fennel--initialize-repl (format fmt "default") params)
            (user-error uninitiolized-err))
-          ((ob-fennel--check-fennel-proc (format fmt session-name))
-           (get-buffer (format fmt session-name)))
-          (t (ob-fennel--initialize-repl (format fmt session-name) params)
+          ((ob-fennel--check-fennel-proc (format fmt session))
+           (get-buffer (format fmt session)))
+          (t (ob-fennel--initialize-repl (format fmt session) params)
              (user-error uninitiolized-err)))))
 
 (defun ob-fennel--send-to-repl (repl-buffer body)
-  "Send BODY to the `inferior-lisp-proc' and retrieve the result."
+  "Send BODY to the REPL-BUFFER and retrieve the result."
+  (unless (ob-fennel--check-fennel-proc repl-buffer)
+    (user-error "%S buffer doesn't have an active process"
+                repl-buffer))
   (let ((inferior-lisp-buffer repl-buffer))
-    (condition-case nil (inferior-lisp-proc)
-      (error
-       (user-error "%S buffer doesn't have an active process"
-                   inferior-lisp-buffer)))
     (string-trim
      (replace-regexp-in-string
       "^[[:space:]]+" ""
@@ -96,6 +101,41 @@ Can return symbol `uninitialized' in case there was no REPL buffer."
        fennel-mode-repl-prompt-regexp ""
        (fennel-scratch--eval-to-string
         body))))))
+
+(defun ob-fennel-var-to-fennel (var)
+  "Convert an elisp value to a fennel variable.
+Convert an elisp value, VAR, into a string of fennel source code
+specifying a variable of the same value."
+  (cond ((listp var)
+         (concat "[" (mapconcat #'ob-fennel-var-to-fennel var " ") "]"))
+        ((eq var 'hline)
+         ob-fennel--hline-to)
+        (t (format
+            (if (stringp var) "%S" "%s")
+            (if (stringp var) (substring-no-properties var) var)))))
+
+(defun ob-fennel-table-or-string (results)
+  "Convert RESULTS into an appropriate elisp value.
+If the results look like a list or tuple, then convert them into an
+Emacs-lisp table, otherwise return the results as a string."
+  (org-babel-script-escape results))
+
+(defun org-babel-variable-assignments:fennel (params)
+  "Return a list of Fennel let bindings assigning the block's PARAMS."
+  (mapcar
+   (lambda (pair)
+     (format "%s %s"
+	     (car pair)
+	     (ob-fennel-var-to-fennel (cdr pair))))
+   (org-babel--get-vars params)))
+
+(defun org-babel-expand-body:fennel (body params)
+  "Expand BODY according to PARAMS, return the expanded body."
+  (let ((vars (org-babel-variable-assignments:fennel params)))
+    (if (null vars) (concat body "\n")
+      (format "(let [%s]\n%s\n)"
+	      (string-join vars "\n")
+	      body))))
 
 (defun org-babel-execute:fennel (body params)
   "Evaluate a block of Fennel code with Babel.
@@ -119,12 +159,12 @@ co-exist in different sessions, since they're different
 processes."
   (condition-case nil (require 'fennel-scratch)
     (error (user-error "`fennel-scratch' is unavailable")))
-  (let* ((repl-buffer (ob-fennel--get-create-repl-buffer params))
-         (eval-result (ob-fennel--send-to-repl repl-buffer body)))
+  (let* ((repl-buffer (ob-fennel--get-create-repl-buffer (cdr (assq :session params)) params))
+         (body (org-babel-expand-body:fennel body params))
+         (eval-result (ansi-color-apply (ob-fennel--send-to-repl repl-buffer body))))
     (org-babel-result-cond (cdr (assq :result-params params))
       eval-result
-      (condition-case nil (org-babel-script-escape eval-result)
-        (error eval-result)))))
+      (ob-fennel-table-or-string (org-trim eval-result)))))
 
 (provide 'ob-fennel)
 ;;; ob-fennel.el ends here
