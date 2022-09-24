@@ -1,3 +1,161 @@
 * ob-fennel
 
 Org Babel support for the [[fennel-lang.org/][Fennel]] language.
+
+** Installation
+
+Install this package either by using something like [[https://github.com/radian-software/straight.el][straight.el]] or manually putting =ob-fennel.el= to your load path.
+
+After that, add support to Org by adding this to your =init.el=:
+
+#+begin_src emacs-lisp
+(with-eval-after-load fennel
+  (with-eval-after-load org
+    (org-babel-do-load-languages
+     'org-babel-load-languages
+     '((fennel . t)))))
+#+end_src
+
+** Features
+
+=ob-fennel= supports evaluating code from src blocks and inline src blocks.
+For example, here's an Org buffer
+
+#+begin_src org
+,#+begin_src fennel
+(+ 1 2 3)
+,#+end_src
+
+,#+RESULTS:
+: 6
+#+end_src
+
+Calling =org-babel-execute-src-block=, usually bound to =C-c C-c=, starts the default session for Fennel.
+The code block will not be evaluated, instead, a message will be displayed, asking to re-evaluate the code block when the session is fully initialized.
+Upon initialization, executing the code block again creates the =#+RESULTS= section below the code block, containing the result.
+
+*** Sessions
+
+=ob-fennel= supports named sessions via the =:session= property.
+Sessions are different processes and fully isolated from each other:
+
+#+begin_src org
+,#+begin_src fennel :session a :results none
+(local foo 10)
+,#+end_src
+
+,#+begin_src fennel :session b :results none
+(local foo 20)
+,#+end_src
+
+,#+begin_src fennel :session a
+foo
+,#+end_src
+
+,#+RESULTS:
+: 10
+
+,#+begin_src fennel :session b
+foo
+,#+end_src
+
+,#+RESULTS:
+: 20
+#+end_src
+
+*** Variables and tables as inputs
+
+=ob-fennel= supports using variables from Org mode properties:
+
+#+begin_src org
+,#+begin_src fennel :var x=10 y=20
+(+ x y)
+,#+end_src
+
+,#+RESULTS:
+: 30
+#+end_src
+
+Org tables can be passed to Fennel as well:
+
+#+begin_src org
+,#+name: samples
+| low | high |
+|-----+------|
+|   0 |    6 |
+|   3 |    7 |
+|   8 |   49 |
+
+,#+header: :colnames no :hlines yes :results table
+,#+begin_src fennel :var samples=samples
+(let [column-names (table.remove samples 1) ; the ["low" "high"] row
+      separator (table.remove samples 1)]   ; the "|-----+------|" object
+  (table.insert column-names :average)      ; adding the "average" column
+  (icollect [_ row (ipairs samples)
+             :into [column-names separator]]
+    (doto row
+      (table.insert
+       (/ (accumulate [res 0 _ val (ipairs row)]
+            (+ res val))
+          (length row))))))
+,#+end_src
+
+,#+RESULTS:
+| low | high | average |
+|-----+------+---------|
+|   0 |    6 |     3.0 |
+|   3 |    7 |     5.0 |
+|   8 |   49 |    28.5 |
+#+end_src
+
+The =separator= here is passed as a special object with a single =__fennelview= metamethod, which prints this object's name =hline=.
+You can see how the Org table is represented by calling the =org-babel-expand-src-block= on the src block.
+
+Note, a whole body of the src block is wrapped into =let= when =:var= property is set, so it's impossible to populate top-level scope inside such src block.
+
+*** Literate programming and reproducible research
+
+=ob-fennel= supports tangling code into =.fnl= files via the =:tangle= property.
+In addition to that, it is possible to use fennel expressions inline, in combination with other src blocks, Org variables, and tables:
+
+#+begin_src org
+Let's compute a factorial.
+First, we need a function for computing factorials:
+
+,#+begin_src fennel :results none
+(fn ! [x]
+  (if (> x 0)
+      (* x (! (- x 1)))
+      1))
+,#+end_src
+
+Now, we can compute a factorial with =(! 4)=: src_fennel[]{(! 4)}.
+#+end_src
+
+After evaluating the src block and exporting (for example) to HTML, we should something like that:
+
+#+begin_src html
+<div id="content" class="content">
+  <p>
+    Let's compute a factorial.
+    First, we need a function for computing factorials:
+  </p>
+  <div class="org-src-container">
+    <pre class="src src-fennel">(fn ! [x]
+      (if (&gt; x 0)
+      (* x (! (- x 1)))
+      1))
+    </pre>
+  </div>
+  <p>
+    Now, we can compute a factorial with <code>(! 4)</code>: <code>24</code>.
+  </p>
+</div>
+#+end_src
+
+The inline =src_fennel[]{(! 4)}= was replaced with the result.
+
+** Contribution
+
+Please do.
+You can submit issues and feature requests to the [[https://gitlab.com/andreyorst/ob-fennel][package repository]].
