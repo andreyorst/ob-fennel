@@ -84,14 +84,15 @@ Org tables can be passed to Fennel as well:
 |-----+------|
 |   0 |    6 |
 |   3 |    7 |
-|   8 |   49 |
+|   8 |   42 |
 
 ,#+header: :colnames no :hlines yes :results table
 ,#+begin_src fennel :var samples=samples
-(let [column-names (table.remove samples 1) ; the ["low" "high"] row
-      separator (table.remove samples 1)]   ; the "|-----+------|" object
+(let [[column-names ; the  ["low" "high"] row
+       separator    ; the "|-----+------|" object
+       & rows] samples]
   (table.insert column-names :average)      ; adding the "average" column
-  (icollect [_ row (ipairs samples)
+  (icollect [_ row (ipairs rows)
              :into [column-names separator]]
     (doto row
       (table.insert
@@ -105,7 +106,7 @@ Org tables can be passed to Fennel as well:
 |-----+------+---------|
 |   0 |    6 |     3.0 |
 |   3 |    7 |     5.0 |
-|   8 |   49 |    28.5 |
+|   8 |   42 |    25.0 |
 #+end_src
 
 The =separator= here is passed as a special object with a single =__fennelview= metamethod, which prints this object's name =hline=.
