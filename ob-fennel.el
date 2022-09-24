@@ -5,7 +5,7 @@
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: outlines, literate programming, reproducible research
 ;; Prefix: ob-fennel
-;; Version: 0.0.3
+;; Version: 0.0.4
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -45,9 +45,6 @@
 
 (defvar org-babel-default-header-args:fennel '())
 
-(defvar-local ob-fennel--current-session-buffer nil
-  "Parent buffer of a session.")
-
 (defvar ob-fennel--hline-to "(setmetatable [] {:__fennelview #:hline})"
   "Replace hlines in incoming tables with this when translating to Fennel.")
 
@@ -70,13 +67,10 @@
   "Get or create Fennel REPL buffer for SESSION according to PARAMS.
 
 Raises a `user-error' in case there was no REPL buffer."
-  (when (null ob-fennel--current-session-buffer)
-    (setq ob-fennel--current-session-buffer (current-buffer)))
-  (let ((fmt (format "*Fennel REPL:%%s[%s]*" ob-fennel--current-session-buffer))
+  (let ((fmt "*Fennel REPL:%s*")
         (uninitiolized-err "Please re-evaluate when Fennel REPL is initialized"))
     (cond ((and (or (string= "none" session)
                     (null session))
-                ob-fennel--current-session-buffer
                 (ob-fennel--check-fennel-proc (format fmt "default")))
            (get-buffer (format fmt "default")))
           ((or (string= "none" session)
