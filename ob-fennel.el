@@ -18,7 +18,7 @@
 ;; General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with isayt.  If not, see <http://www.gnu.org/licenses/>.
+;; along with ob-fennel.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -111,7 +111,7 @@ specifying a variable of the same value."
 (defun ob-fennel-table-or-string (results)
   "Convert RESULTS into an appropriate elisp value.
 If the results look like a list or tuple, then convert them into an
-Emacs-lisp table, otherwise return the results as a string."
+Emacs-lisp table, otherwise return the result as a string."
   (org-babel-script-escape results))
 
 (defun org-babel-variable-assignments:fennel (params)
@@ -148,7 +148,7 @@ For example:
 
 automatically creates buffer \"foo\", starts Fennel REPL in it,
 by using \"fennel --lua luajit --repl\" as a command.  Sessions
-are isolated, and repl-local variables with same names can
+are isolated, and repl-local variables with the same names can
 co-exist in different sessions, since they're different
 processes."
   (condition-case nil (require 'fennel-scratch)
