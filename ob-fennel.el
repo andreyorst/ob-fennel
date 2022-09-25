@@ -5,7 +5,7 @@
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: outlines, literate programming, reproducible research
 ;; Prefix: ob-fennel
-;; Version: 0.0.5
+;; Version: 0.0.6
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -133,7 +133,7 @@ Emacs-lisp table, otherwise return the result as a string."
   "Expand BODY according to PARAMS, return the expanded body."
   (let ((vars (org-babel-variable-assignments:fennel params)))
     (if (null vars) (concat body "\n")
-      (format "(let [%s]\n%s\n)"
+      (format "(let [%s]\n  %s\n)"
 	      (string-join vars "\n")
 	      body))))
 
