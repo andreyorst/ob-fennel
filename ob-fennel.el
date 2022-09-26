@@ -5,7 +5,7 @@
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: outlines, literate programming, reproducible research
 ;; Prefix: ob-fennel
-;; Version: 0.0.6
+;; Version: 0.0.7
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -42,6 +42,23 @@
 
 (defvar org-babel-tangle-lang-exts)
 (add-to-list 'org-babel-tangle-lang-exts '("fennel" . "fnl"))
+
+(defcustom ob-fennel-collapse-code 'oneline
+  "How to collapse code bofore sending it to the process.
+
+- 'strings - collapse strings with literal newlines into
+  one-line strings with `\\n'.
+- 'comments - remove comments, and lines completely consisting
+  out of comments.
+- 'both - collapse strings and remove comments.
+- 'oneline - collapse strings, remove commens, and remove any
+  newlines from the code."
+  :group 'ob-fennel
+  :type '(choice
+	  (const :tag "collapse strings" strings)
+	  (const :tag "remove comments" comments)
+	  (const :tag "collapse strings and remove comments" both)
+          (const :tag "collapse to one line" oneline)))
 
 (defvar org-babel-default-header-args:fennel '())
 
@@ -131,11 +148,33 @@ Emacs-lisp table, otherwise return the result as a string."
 
 (defun org-babel-expand-body:fennel (body params)
   "Expand BODY according to PARAMS, return the expanded body."
-  (let ((vars (org-babel-variable-assignments:fennel params)))
-    (if (null vars) (concat body "\n")
-      (format "(let [%s]\n  %s\n)"
-	      (string-join vars "\n")
-	      body))))
+  (let* ((vars (org-babel-variable-assignments:fennel params))
+         (body
+          (with-temp-buffer
+            (switch-to-buffer (current-buffer))
+            (insert (if (null vars) body
+                      (format "(let [%s]\n %s)" (string-join vars "\n") body)))
+            (when (memq ob-fennel-collapse-code '(comments oneline both))
+              ;; remove comments
+              (goto-char (point-min))
+              (while (re-search-forward ";" nil 'noerror)
+                (unless (or (nth 3 (syntax-ppss)) (looking-at-p "\""))
+                  (delete-region (1- (point)) (progn (end-of-line) (point)))
+                  (beginning-of-line)
+                  (when (looking-at-p "[[:blank:]]*$")
+                    (delete-line)))))
+            (when (memq ob-fennel-collapse-code '(strings oneline both))
+              ;; collapse strings
+              (goto-char (point-min))
+              (while (re-search-forward "\"" nil 'noerror)
+                (when (nth 3 (syntax-ppss))
+                  (let ((start (1- (point))))
+                    (when (re-search-forward "\"" nil 'noerror)
+                      (replace-regexp-in-region "\n" "\\\\n" start (point)))))))
+            (when (eq ob-fennel-collapse-code 'oneline)
+              (delete-indentation nil (point-min) (point-max)))
+            (buffer-substring-no-properties (point-min) (point-max)))))
+    (concat body "\n")))
 
 (defun org-babel-execute:fennel (body params)
   "Evaluate a block of Fennel code with Babel.
