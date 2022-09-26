@@ -151,7 +151,6 @@ Emacs-lisp table, otherwise return the result as a string."
   (let* ((vars (org-babel-variable-assignments:fennel params))
          (body
           (with-temp-buffer
-            (switch-to-buffer (current-buffer))
             (insert (if (null vars) body
                       (format "(let [%s]\n %s)" (string-join vars "\n") body)))
             (when (memq ob-fennel-collapse-code '(comments oneline both))
