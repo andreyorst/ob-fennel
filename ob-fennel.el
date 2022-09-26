@@ -173,7 +173,7 @@ Emacs-lisp table, otherwise return the result as a string."
             (when (eq ob-fennel-collapse-code 'oneline)
               (delete-indentation nil (point-min) (point-max)))
             (buffer-substring-no-properties (point-min) (point-max)))))
-    (concat body "\n")))
+    (concat (string-trim body) "\n")))
 
 (defun org-babel-execute:fennel (body params)
   "Evaluate a block of Fennel code with Babel.
