@@ -5,7 +5,7 @@
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: outlines, literate programming, reproducible research
 ;; Prefix: ob-fennel
-;; Version: 0.0.7
+;; Version: 0.0.8
 
 ;; This program is free software: you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -75,8 +75,8 @@
   "Create a Fennel REPL buffer with given NAME according to PARAMS."
   (let* ((cmd (or (cdr (assq :fennel-cmd params))
                   fennel-program))
-         (cmdlist (when (fboundp 'split-string-shell-command)
-                    (split-string-shell-command cmd)
+         (cmdlist (if (fboundp 'split-string-shell-command)
+                      (split-string-shell-command cmd)
                     (split-string cmd)))
          (buffer (apply #'make-comint-in-buffer name name
                         (car cmdlist) nil (cdr cmdlist))))
